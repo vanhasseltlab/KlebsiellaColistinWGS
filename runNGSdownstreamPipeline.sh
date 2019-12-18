@@ -1,5 +1,5 @@
 #!/bash/bin
-#ready for git!
+
 
 #read -p "Set output directory" outdir
 outdir="genome_data/toolOut/"
