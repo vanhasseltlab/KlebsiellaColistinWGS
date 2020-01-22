@@ -8,6 +8,9 @@
 # https://pfam.xfam.org/search#tabview=tab1
 # https://www.ebi.ac.uk/interpro/
 
+## Clean up workspace
+rm(list=ls())
+
 ##  LOAD PACKAGES  #########################################################################################################################
 pkgs <- c("vcfR", "adegenet", "adegraphics", "pegas", "StAMPP", "lattice", "gplots", "ape", "ggmap", "ggplot2", "reshape","readxl")
 pkgs <- c("vcfR", "readxl","writexl","tidyr","stringr","readr")
@@ -30,22 +33,45 @@ meta$varCountFilt <- 0
 strainL <- list()
 strainDF <- data.frame()
 
-hyponames <- c("KPN700603" = "NPBKJIEB",
-               "KPN9884" = "OLPKOKPN",
-               "KPN9749" = "AGIDONFK")
 
 ## loop through samples
-for (strain in c("KPN9884", "KPN9749", "KPN700603")){
-  print (strain)
-  strain <- "KPN9749"
-  
-# read vcf file with vcfR
-  vcf <- read.vcfR(paste0("genome_data/toolOut/GATK_pipe_output/",strain,"/annotated.vcf.gz"))
+for (strain in c("KPN9884", "KPN9749")){
 
+# read vcf file with vcfR
+  #vcf <- read.vcfR(paste0("genome_data/toolOut/GATK_pipe_output/",strain,"/annotated.vcf.gz"))
+  
+################### testing different hard filtering options  
+  #vcf <- read.vcfR(paste0("testing_filts/",strain,"_QD1/annotated.vcf.gz"))
+  #vcf <- read.vcfR(paste0("testing_filts/",strain,"_QD2/annotated.vcf.gz"))
+  #vcf <- read.vcfR(paste0("testing_filts/",strain,"_noFilt/annotated.vcf.gz"))
+  #vcf <- read.vcfR(paste0("testing_filts/",strain,"_allFilt/annotated.vcf.gz"))
+  vcf <- read.vcfR(paste0("testing_filts/GATK_pipe_output/",strain,"/annotated.vcf.gz"))
+  
+# to data frame without any filteration!
+  if (FALSE){
+  sampleDF <- data.frame()
+  for (sample in colnames(vcf@gt[,-1])){
+    # get vcf for the sample, select it's variations and get the annotation for the variations
+    tempvcf <- vcf[,c("FORMAT", sample)]
+    pick <- startsWith(tempvcf@gt[,sample],"1:")
+    if (length(which(pick))==0){next()}
+    
+    info <- extract.info(tempvcf, element = "ANN",as.numeric = F)
+    
+    # create a dataframe for all variations of the sample & add info
+    variations <- data.frame("sample"=sample, "POS" = tempvcf@fix[pick,c("POS")], "REF"=tempvcf@fix[pick,c("REF")], "ALT"=tempvcf@fix[pick,c("ALT")] )
+    variations$info <- info[pick]
+    
+    # bind the variationsDF to the sampleDF, creating one DF with all variants for the strain
+    sampleDF <- rbind(sampleDF, variations)
+    rownames(sampleDF) <- NULL
+  }
+  }
+  
 ## cleaning ####  
   # remove STK_52 & FSTK_120, sample introduces problems.
-  if (strain == "KPN9884"){vcf <- vcf[,head(colnames(vcf@gt),-1)]}
-  if (strain == "KPN9749"){vcf <- vcf[,colnames(subset(vcf@gt,select=-c(FSTK_120)))]}
+  #if (strain == "KPN9884"){vcf <- vcf[,colnames(subset(vcf@gt,select=-c(STK_52)))]}
+  #if (strain == "KPN9749"){vcf <- vcf[,colnames(subset(vcf@gt,select=-c(FSTK_120)))]}
   
   # add varcount per sample to meta
   gt <- extract.gt(vcf, element = "GT",as.numeric = T)
@@ -74,7 +100,8 @@ for (strain in c("KPN9884", "KPN9749", "KPN700603")){
   keepvar <- sapply(1:nrow(filtempty),function(x) any(filtempty[x,-1]==F))
   # apply keep to vcfR object
   vcf2 <- vcf1[keepvar,]
-  
+
+
 ## potentional variants that cause colR ####
   gt <- extract.gt(vcf1, element = "GT",as.numeric = T)
   for (col in colnames(gt)){
@@ -82,8 +109,8 @@ for (strain in c("KPN9884", "KPN9749", "KPN700603")){
   }
   
   # create dataframe for all possible colR variants in the strain
-  if (strain == "KPN9884"){strainR <- "KPN9596-R"}
-  if (strain == "KPN9749"){strainR <- "KPN9497-R"}
+  #if (strain == "KPN9884"){strainR <- "KPN9596-R"}
+  #if (strain == "KPN9749"){strainR <- "KPN9497-R"}
   
   sampleDF <- data.frame()
   for (sample in colnames(vcf2@gt[,-1])){
@@ -101,7 +128,6 @@ for (strain in c("KPN9884", "KPN9749", "KPN700603")){
     # bind the variationsDF to the sampleDF, creating one DF with all variants for the strain
     sampleDF <- rbind(sampleDF, variations)
     rownames(sampleDF) <- NULL
-    
   }
   
   sampleDF <- merge(meta[,c("strain","replicate","Time point","CONC","new lable")], sampleDF, by.y="sample", by.x="new lable")
@@ -115,59 +141,77 @@ for (strain in c("KPN9884", "KPN9749", "KPN700603")){
   strainDF$ALT.info <- NULL
   
   
-  ##@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@testing@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-  strainDF$gene_name
-  ID <- "_00001"
-  gff_line <- system(paste0("cat genome_data/toolOut/prokka/",strain,"/",strain,".gff | egrep ",ID),intern = T)
-  
-  product <- sub("^.*;product=", "", gff_line)
-  inference <- sub(";.*","",sub("^.*;inference=", "", gff_line))
-  ##@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@testing@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-  
-  
-  
-
-  
-  
-  # add dataframe of strain to the list of dataframes
-  strainL[[strain]] <- strainDF
-  
+## additional annotation ####
+  strainDF$product <- NA
+  for (ID in unique(grep("^[A-Z]+_[0-9]+.*$",strainDF$gene_name, value=T))){
+    print(ID)
+    
+    if (grepl("-",ID)){
+      IDs <-  unlist(strsplit(ID, "-"))
+      gff_line <- system(paste0("cat genome_data/toolOut/prokka/",strain,"/",strain,".gff | egrep '",IDs[1],"|",IDs[2],"'"),intern = T)
+      product <- paste(sub("^.*;product=", "", gff_line[grep("product",gff_line)]),collapse = " ;-; ")
+      #strainDF[which(strainDF$gene_name==ID),]
+    }else{
+      gff_line <- system(paste0("cat genome_data/toolOut/prokka/",strain,"/",strain,".gff | egrep ",ID),intern = T)
+      product <- sub("^.*;product=", "", gff_line[grep("product",gff_line)])
+    }
+    strainDF[which(strainDF$gene_name==ID),]$product <- product
+  }
   
 ## create FASTA of hypothetical proteins #### 
-  # get list of sequences for the hypothetical proteins
-  hypo_prots <- strainDF[contains(hyponames[strain],vars = strainDF$gene_name),c("gene_name","gene_ID", "new.lable")]
-  hypo_prots <- unique(hypo_prots$gene_ID)
-  
-  # read Nucleotide FASTA file of all the prediction transcripts (CDS, rRNA, tRNA, tmRNA, misc_RNA)
-  sequences <- readDNAStringSet(paste0("genome_data/toolOut/prokka/",strain,"/",strain,".ffn"))
-  
-  # set file save name
-  file_s <- "genome_data/toolOut/variantComparison_output/hypothetical_proteins.fa"
-  
-  for (protein in hypo_prots){
-    if (grepl("-", protein)){ # two gene names
-      write.table(paste0("##  ~~>",protein,"|",strain), file = file_s, append = T,row.names = F, quote = F,col.names = F) #write protein names to .fa file
-      protein_u <- unlist(unique(strsplit(protein, "-")))
-      for (i in protein_u){
-        write.table(paste0(">",i,"|",strain), file = file_s, append = T, quote = F, row.names = F,col.names = F)
-        prot_seq <- sequences[grep(i, names(sequences))]
+  if (FALSE){
+    # get list of sequences for the hypothetical proteins
+    hypo_prots <- unique(strainDF[contains("hypothetical protein",vars = strainDF$product),c("gene_ID")])
+    
+    # read Nucleotide FASTA file of all the prediction transcripts (CDS, rRNA, tRNA, tmRNA, misc_RNA)
+    sequences <- readDNAStringSet(paste0("genome_data/toolOut/prokka/",strain,"/",strain,".ffn"))
+    
+    # set file save name
+    file_s <- "genome_data/toolOut/variantComparison_output/hypothetical_proteins.fa"
+    
+    for (protein in hypo_prots){
+      if (grepl("-", protein)){ # two gene names
+        write.table(paste0("##  ~~>",protein,"|",strain), file = file_s, append = T,row.names = F, quote = F,col.names = F) #write protein names to .fa file
+        protein_u <- unlist(unique(strsplit(protein, "-")))
+        for (i in protein_u){
+          write.table(paste0(">",i,"|",strain), file = file_s, append = T, quote = F, row.names = F,col.names = F)
+          prot_seq <- sequences[grep(i, names(sequences))]
+          write.table(prot_seq, file = file_s, append = T, quote = F, row.names = F,col.names = F)
+        }
+        write.table(paste0("##  <~~",protein,"|",strain), file = file_s, append = T,row.names = F, quote = F,col.names = F)
+      }else{ # one gene name
+        write.table(paste0(">",protein,"|",strain), file = file_s, append = T,row.names = F, quote = F,col.names = F) #write protein names to .fa file
+        prot_seq <- sequences[grep(protein, names(sequences))]
         write.table(prot_seq, file = file_s, append = T, quote = F, row.names = F,col.names = F)
       }
-      write.table(paste0("##  <~~",protein,"|",strain), file = file_s, append = T,row.names = F, quote = F,col.names = F)
-    }else{ # one gene name
-      write.table(paste0(">",protein,"|",strain), file = file_s, append = T,row.names = F, quote = F,col.names = F) #write protein names to .fa file
-      prot_seq <- sequences[grep(protein, names(sequences))]
-      write.table(prot_seq, file = file_s, append = T, quote = F, row.names = F,col.names = F)
     }
   }
+  
+
+## remove
+  # add dataframe of strain to the list of dataframes
+  strainL[[strain]] <- strainDF
 }
+  
+
 
 # write variation dataframes to xlsx file
-write_xlsx(strainL, "genome_data/toolOut/variantComparison_output/snpList.xlsx")
+write_xlsx(strainL, paste0("genome_data/toolOut/variantComparison_output/",Sys.Date(),"_snpList.xlsx"))
+
+
+
+################## testing filteration options
+#write_xlsx(strainL, paste0("testing_filts/QD1_",Sys.Date(),"_snpList.xlsx"))
+#write_xlsx(strainL, paste0("testing_filts/QD2_",Sys.Date(),"_snpList.xlsx"))
+#write_xlsx(strainL, paste0("testing_filts/noFilt_",Sys.Date(),"_snpList.xlsx"))
+#write_xlsx(strainL, paste0("testing_filts/allFilt_",Sys.Date(),"_snpList.xlsx"))
+write_xlsx(strainL, paste0("testing_filts/Haplo-Filt_",Sys.Date(),"_snpList.xlsx"))
+
 
 # get important columns and write to csv file
 meta_save <- na.omit(meta[,c("strain", "experiment", "Time point", "CONC", "replicate", "New ID", "new lable","varCountRaw", "varCountFilt")])
 write.csv(meta_save, file = "genome_data/toolOut/variantComparison_output/numberOfSNPs.csv")
+
 
 quit()
 

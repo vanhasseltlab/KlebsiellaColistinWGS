@@ -2,7 +2,7 @@
 
 #===========================================================================================================#
 #                           IMPORT VARIABLES & SET PATH
-#===========================================================================================================#
+
 # T0 SAMPLE, NCBI REFERENCE, FW_READS, RV_READS
 T0=${1}
 reference=${2}
@@ -19,12 +19,12 @@ consensus="genome_data/toolOut/consensus/"
 
 # and make directories if they dont exist
 mkdir -p ${consensus}
-
+#===========================================================================================================#
 
 
 #===========================================================================================================#
 #                           CREATE BASELINE REFERENCES
-#===========================================================================================================#
+
 # set NCBI reference variable
 REF=${consensus}${T0}_NCBItemplate
 
@@ -41,23 +41,18 @@ if [ ! -f ${consensus}${T0}_consensus.fa ];then
     samtools view -bS ${consensus}${T0}_mapped.sam | samtools sort - -o ${consensus}${T0}_mapped.bam
   fi
   
-  # create vcf file
-  if [ ! -f ${consensus}${T0}.vcf ];then
-    samtools mpileup -uf $REF.fa ${consensus}${T0}_mapped.bam > ${consensus}${T0}.vcf
-  fi
-  
-  if [ ! -f ${consensus}${T0}_consensus.fastq ];then
-    bcftools call -c --ploidy 1 ${consensus}${T0}.vcf | vcfutils.pl vcf2fq > ${consensus}${T0}_consensus.fastq
-  fi
+  # create .vcf file
+  [ ! -f ${consensus}${T0}.vcf ] && samtools mpileup -uf $REF.fa ${consensus}${T0}_mapped.bam > ${consensus}${T0}.vcf
+
+  # create .fastq file
+  [ ! -f ${consensus}${T0}_consensus.fastq ] && bcftools call -c --ploidy 1 ${consensus}${T0}.vcf | vcfutils.pl vcf2fq > ${consensus}${T0}_consensus.fastq
   
   # convert .fastq to .fasta and set bases of quality lower than 20 to N
-  seqtk seq -aQ64 -q20 -n N ${consensus}${T0}_consensus.fastq > ${consensus}${T0}_consensus.fa
+  [ ! -f ${consensus}${T0}_consensus.fa ] && seqtk seq -aQ64 -q20 -n N ${consensus}${T0}_consensus.fastq > ${consensus}${T0}_consensus.fa
 fi
 
 ##~~~~ prokka: annotate consensus.fa reference  ~~~~##
-if [ ! -d genome_data/toolOut/prokka/$strain ];then
-  prokka --force --addgenes --prefix $strain --outdir genome_data/toolOut/prokka/$strain ${consensus}${T0}_consensus.fa
-fi
+[ ! -d genome_data/toolOut/prokka/$strain ] && prokka --force --addgenes --prefix $strain --outdir genome_data/toolOut/prokka/$strain ${consensus}${T0}_consensus.fa
 
 
 ##~~~~ snpEff: build database for baseline consensus.fa references  ~~~~##
@@ -80,6 +75,8 @@ if [ ! -f /home/linuxbrew/.linuxbrew/share/snpeff/data/$strain/genes.gbk ];then
   # build snpEff database
   snpEff build -genbank -v $strain
 fi
+#===========================================================================================================#
+
+
 
 exit
-
