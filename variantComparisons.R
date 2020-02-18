@@ -25,7 +25,12 @@ remove (pkgs,pkg)
 
 ##  READ DATA  #########################################################################################################################
 # meta data of samples
-meta <- read_excel("Sample overview_seq.xlsx")
+meta <- read_excel("Sample_overview_seq.xlsx")
+
+#test <- read_excel("testing_filts/noFilt_2020-01-16_snpList.xlsx", sheet = "KPN9884")
+test <- read_excel("genome_data/toolOut/denovoSNPs2020-02-12_snpList.xlsx", sheet = "KPN9749")
+
+
 meta <- as.data.frame(meta)
 meta$varCountRaw <- 0
 meta$varCountFilt <- 0
@@ -38,14 +43,15 @@ strainDF <- data.frame()
 for (strain in c("KPN9884", "KPN9749")){
 
 # read vcf file with vcfR
-  #vcf <- read.vcfR(paste0("genome_data/toolOut/GATK_pipe_output/",strain,"/annotated.vcf.gz"))
+  vcf <- read.vcfR(paste0("genome_data/toolOut/GATK_pipe_output/",strain,"/annotated.vcf.gz"))
   
 ################### testing different hard filtering options  
   #vcf <- read.vcfR(paste0("testing_filts/",strain,"_QD1/annotated.vcf.gz"))
   #vcf <- read.vcfR(paste0("testing_filts/",strain,"_QD2/annotated.vcf.gz"))
   #vcf <- read.vcfR(paste0("testing_filts/",strain,"_noFilt/annotated.vcf.gz"))
   #vcf <- read.vcfR(paste0("testing_filts/",strain,"_allFilt/annotated.vcf.gz"))
-  vcf <- read.vcfR(paste0("testing_filts/GATK_pipe_output/",strain,"/annotated.vcf.gz"))
+  #vcf <- read.vcfR(paste0("testing_filts/GATK_pipe_output/",strain,"/annotated.vcf.gz"))
+  #strain <- "KPN9884"
   
 # to data frame without any filteration!
   if (FALSE){
@@ -84,6 +90,7 @@ for (strain in c("KPN9884", "KPN9749")){
   NGvariations <- data.frame(vcf@gt[,c(colnames(vcf@gt)%in%NGsamples)])
   # loop though the columns of the NG dataframe, check if the NG samples have the variation (TRUE/FALSE)
   for (column in NGsamples){
+    print (column)
     NGvariations[,column] <- startsWith(vcf@gt[,column], "1:")
   }
   # only keep the variations that don't occur in NG c0 samples
@@ -103,7 +110,7 @@ for (strain in c("KPN9884", "KPN9749")){
 
 
 ## potentional variants that cause colR ####
-  gt <- extract.gt(vcf1, element = "GT",as.numeric = T)
+  gt <- extract.gt(vcf2, element = "GT",as.numeric = T)
   for (col in colnames(gt)){
     meta[which(meta$`new lable`==col),]$varCountFilt <- sum(gt[,col],na.rm = T)
   }
@@ -122,7 +129,7 @@ for (strain in c("KPN9884", "KPN9749")){
     info <- extract.info(tempvcf, element = "ANN",as.numeric = F)
     
     # create a dataframe for all variations of the sample & add info
-    variations <- data.frame("sample"=sample, "POS" = tempvcf@fix[pick,c("POS")], "REF"=tempvcf@fix[pick,c("REF")], "ALT"=tempvcf@fix[pick,c("ALT")] )
+    variations <- data.frame("sample"=sample,"contig"=tempvcf@fix[pick,c("CHROM")], "POS" = tempvcf@fix[pick,c("POS")], "REF"=tempvcf@fix[pick,c("REF")], "ALT"=tempvcf@fix[pick,c("ALT")] )
     variations$info <- info[pick]
     
     # bind the variationsDF to the sampleDF, creating one DF with all variants for the strain
@@ -140,23 +147,50 @@ for (strain in c("KPN9884", "KPN9749")){
   strainDF <- strainDF[!duplicated(strainDF),]
   strainDF$ALT.info <- NULL
   
+  # add contig length to dataframe
+  strainDF$contig_length <- NA
+  for (cont in unique(strainDF$contig)){
+    strainDF[which(strainDF$contig==cont),]$contig_length <- gsub(".*length=(.+),.*", "\\1", grep(cont,vcf@meta,value=T))
+  }
+
   
 ## additional annotation ####
   strainDF$product <- NA
   for (ID in unique(grep("^[A-Z]+_[0-9]+.*$",strainDF$gene_name, value=T))){
-    print(ID)
-    
+
     if (grepl("-",ID)){
-      IDs <-  unlist(strsplit(ID, "-"))
-      gff_line <- system(paste0("cat genome_data/toolOut/prokka/",strain,"/",strain,".gff | egrep '",IDs[1],"|",IDs[2],"'"),intern = T)
+      IDn <- sub("[A-Z]+_","",unlist(strsplit(ID, "-")))
+      gff_line <- system(paste0("cat genome_data/toolOut/prokka/",strain,"/",strain,".gff | egrep '",IDn[1],"|",IDn[2],"'"),intern = T)
       product <- paste(sub("^.*;product=", "", gff_line[grep("product",gff_line)]),collapse = " ;-; ")
-      #strainDF[which(strainDF$gene_name==ID),]
     }else{
-      gff_line <- system(paste0("cat genome_data/toolOut/prokka/",strain,"/",strain,".gff | egrep ",ID),intern = T)
+      IDn <- sub("[A-Z]+_","",ID)
+      gff_line <- system(paste0("cat genome_data/toolOut/prokka/",strain,"/",strain,".gff | egrep ",IDn),intern = T)
       product <- sub("^.*;product=", "", gff_line[grep("product",gff_line)])
     }
     strainDF[which(strainDF$gene_name==ID),]$product <- product
   }
+  
+  
+  # some snps have alt=* these don't have the correct gene_ID, gene_name, gene_feature tag, 
+  #this is fixed by reading the gff file and comparing the position of the snp to the genes 
+  contigs <- unique(strainDF[which(strainDF$ALT %in% "*"),]$contig)
+  for (contig in contigs){
+    gff_lines <- system(paste0("cat genome_data/toolOut/prokka/",strain,"/",strain,".gff | egrep ",contig," | egrep CDS "),intern = T)
+    gff_lines <- data.frame(do.call('rbind', strsplit(as.character(gff_lines),'\t',fixed=TRUE)))
+    
+    gff_positions <- sapply(gff_lines[,c("X4","X5")],function(x) as.numeric(as.character(x)))
+    snp_positions <- as.numeric(as.character(strainDF[which(strainDF$ALT %in% "*"),]$POS))
+    
+    for (i in 1:nrow(gff_positions)){
+      test <- snp_positions[ snp_positions >= gff_positions[i,1] & snp_positions <= gff_positions[i,2]]
+      if (length(test)!=0){
+        gff_line <- gff_lines[i,]$X9
+        strainDF[which(strainDF$POS %in% snp_positions),]$product <- sub("^.*;product=", "", gff_line)
+        strainDF[which(strainDF$POS %in% snp_positions),c("gene_name","gene_ID","feature_ID")] <- gsub(".*ID=(.+);Parent.*", "\\1", gff_line)
+      }
+    }
+  }
+  
   
 ## create FASTA of hypothetical proteins #### 
   if (FALSE){
@@ -187,8 +221,31 @@ for (strain in c("KPN9884", "KPN9749")){
     }
   }
   
+                                                                                    
+  # reorder dataframe, to a better readable order
+  col_order <- c("strain", "Time.point", "replicate","CONC", "new.lable", "contig", "contig_length", "POS", "REF", "ALT", "annotation", "putative_impact", "gene_name",
+    "product","gene_ID", "feature_type", "feature_ID", "Transcript_biotype", "total", "HGVS.c", "HGVS.p", "cDNA_position", "CDS_position", "Protein_position")
+  strainDF <- strainDF[, col_order]
+  
+  
+  # make gene_names of ORFs prettier
+  for (ID in unique(grep("^[A-Z]+_[0-9]+.*$",strainDF$gene_ID, value=T))){
+    if (grepl("-",ID)){
+      IDn <- sub("[A-Z]+_","",unlist(strsplit(ID, "-")))
+      new_name <- paste0("ORF_",IDn[1],"-ORF_",IDn[2])
+      try(strainDF[which(strainDF$gene_name==ID),]$gene_name <- new_name,silent=T)
+      try(strainDF[which(strainDF$gene_ID==ID),]$gene_ID <- new_name,silent=T)
+      try(strainDF[which(strainDF$feature_ID==ID),]$feature_ID <- new_name,silent=T)
+    }else{
+      IDn <- sub("[A-Z]+_","",ID)
+      new_name <- paste0("ORF_",IDn)
+      try(strainDF[which(strainDF$gene_name==ID),]$gene_name <- new_name,silent=T)
+      try(strainDF[which(strainDF$gene_ID==ID),]$gene_ID <- new_name,silent=T)
+      try(strainDF[which(strainDF$feature_ID==ID),]$feature_ID <- new_name,silent=T)
+    }
+  }
 
-## remove
+  
   # add dataframe of strain to the list of dataframes
   strainL[[strain]] <- strainDF
 }
@@ -205,7 +262,7 @@ write_xlsx(strainL, paste0("genome_data/toolOut/variantComparison_output/",Sys.D
 #write_xlsx(strainL, paste0("testing_filts/QD2_",Sys.Date(),"_snpList.xlsx"))
 #write_xlsx(strainL, paste0("testing_filts/noFilt_",Sys.Date(),"_snpList.xlsx"))
 #write_xlsx(strainL, paste0("testing_filts/allFilt_",Sys.Date(),"_snpList.xlsx"))
-write_xlsx(strainL, paste0("testing_filts/Haplo-Filt_",Sys.Date(),"_snpList.xlsx"))
+write_xlsx(strainL, paste0("genome_data/toolOut/denovoSNPs",Sys.Date(),"_snpList.xlsx"))
 
 
 # get important columns and write to csv file
