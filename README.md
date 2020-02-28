@@ -36,5 +36,3 @@ sudo apt-get install -y bgzip
 ```bash
 bash runNGSdownstreamPipeline.sh -r [PATH_TO_R1_AND_R2_READS] -m [META_FILE.xlsx]
 ```
-
-

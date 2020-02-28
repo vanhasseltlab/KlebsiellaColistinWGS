@@ -3,6 +3,7 @@
 #===========================================================================================================#
 #                           Introduction
 usage(){
+clear
 echo "
 singeSampleProcessing version 0.0.1 part of the runNGSdownstreamPipeline (build 2020-02-18), by Yob Haakman <yob1997@live.nl>.
 
@@ -120,7 +121,10 @@ export -f singleSampleProcessing
 #===========================================================================================================#
 
 
-# call singleSampleProcessing function, with given variables
+
+#===========================================================================================================#
+#                           Call singleSampleProcessing function
+
 singleSampleProcessing "$1" "$2" "$3" "$4" "$5"
 
 exit

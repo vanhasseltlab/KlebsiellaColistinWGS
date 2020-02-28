@@ -3,6 +3,7 @@
 #===========================================================================================================#
 #                           Introduction
 usage(){
+clear
 echo "
 multiSampleProcessing version 0.0.1 part of the runNGSdownstreamPipeline (build 2020-02-18), by Yob Haakman <yob1997@live.nl>.
 
@@ -159,7 +160,6 @@ if [ ! -s  ${outdir}/annotated.vcf.gz ];then
   bgzip ${outdir}/annotated.vcf
   tabix -f -p vcf ${outdir}/annotated.vcf.gz
 fi
-
+exit
 #                           End of script
 #===========================================================================================================#
-
