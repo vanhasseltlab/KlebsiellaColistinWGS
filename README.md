@@ -4,7 +4,7 @@ A bash pipeline for creating a *de novo* assembly of Wild-type which is compared
 
 ## Installations 
 
-Download the zip file and unzip in chosen directory.
+Download NGSdownstreamPipeline.tar.gz and unpack.
 
 ```bash
 tar zxvf NGSdownstreamPipeline.tar.gz
