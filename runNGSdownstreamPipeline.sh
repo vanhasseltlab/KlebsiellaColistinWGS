@@ -83,7 +83,7 @@ done
 if [ ! -s tools/gatk-4.1.3.0/gatk-package-4.1.3.0-local.jar ];then
   echo "gatk 4.1.3.0 is not installed, downloading and installing now."
   cd  tools
-  if [ ! -s gatk-4.1.3.0.zip];then
+  if [ ! -s gatk-4.1.3.0.zip ];then
     wget https://github.com/broadinstitute/gatk/releases/download/4.1.3.0/gatk-4.1.3.0.zip
   fi
   unzip gatk-4.1.3.0.zip
