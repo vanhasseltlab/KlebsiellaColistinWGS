@@ -241,6 +241,7 @@ for baseline in "${!strains[@]}";do
     
 ##~~~~ singleSampleProcessing.sh: map paired-end reads to baseline reference and call variations ~~~~##    
     bash singleSampleProcessing.sh "${R1_a[i]}" "${R2_a[i]}" "${ref}" "${reads}" "${outdir}"&
+    echo "${R1_a[i]}" "${R2_a[i]}" "${ref}"
   done
   wait
   )
@@ -253,7 +254,7 @@ wait
 clear
 
 proceed="yes"
-for file in ${outdir}aligned_bwa/*/*.bam;do
+for file in ${outdir}/aligned_bwa/*/*.bam;do
   if [ ! $(samtools quickcheck -v $file | wc -l) == 0 ];then
     echo $file
     echo "remove ${file%/*}"
@@ -283,11 +284,11 @@ for baseline in "${!strains[@]}";do
   if [ ! -s ${outdir}GATK_pipe_output/${strains[$baseline]}/cohort.g.vcf.gz ];then
     # get strain sample pool
     args=($(xlsx2csv -i --skipemptycolumns -d "\t" "${meta}" | tail -n +2 | awk '{print $1,$4,$10}' | egrep "${strains[$baseline]}" | awk '{print $3}'))
-    sample_L=${args[@]/%/\|};sample_L=${sample_L// };sample_L=${sample_L::-1}
+    sample_L=${args[@]/%/\\\.\|};sample_L=${sample_L// };sample_L=${sample_L::-1}
     
     # find all gVCF file paths of the strain, create input variable for CombineGCFs (-V sample1 -V sample2 -V sample3..N)
     merge_input=$(find . -name *.g.vcf.gz | egrep "${outdir}aligned_bwa" | egrep "${sample_L[*]}" | sort -t _ -k 3 | sed 's/\.\//-V /g')
-     
+
 ##~~~~ GATK: CombineGVCFs ~~~~##    
     java -Xmx25g -XX:ParallelGCThreads=8 -jar tools/gatk-4.1.3.0/gatk-package-4.1.3.0-local.jar CombineGVCFs \
       -R "${outdir}/shovill/${strains[$baseline]}/contigs.fa" \
