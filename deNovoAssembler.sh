@@ -19,7 +19,8 @@ Required parameters:
   [PATH_TO_R1.fastq.gz]   :Path to forward read of sample (fastq.gz format)
   [PATH_TO_R2.fastq.gz]   :Path to reverse read of sample (fastq.gz format)
   [OUTPUT_DIRECTORY]      :Folder to output results to [stdout]
-
+Optional parameter:
+  [ORGANISM]              :Organism name, this identifier must be valid in NCBI Taxonomy (default: 'Klebsiella pneumoniae')
 Input parameters have to be in the order displayed as above.
 "
 }
@@ -35,10 +36,8 @@ fi
 #===========================================================================================================#
 #                           Set variables
 
-strain=$1; R1=$2; R2=$3; outdir=$4
-echo $strain $R1 $R2 $outdir
+strain=$1; R1=$2; R2=$3; outdir=$4 organism=$5
 #===========================================================================================================#
-
 
 
 #===========================================================================================================#
@@ -47,12 +46,111 @@ echo $strain $R1 $R2 $outdir
 ##~~~~ Shovil: de novo assembly and refinementwith best tested settings ~~~~## 
 # guideline for chosing the right kmer size, please try multiple sizes and visualize (e.g. bandage)
 # https://github.com/rrwick/Bandage/wiki/Effect-of-kmer-size
-  [ ! -s ${outdir}/shovill/${strain}/contigs.fa ] &&\
-  shovill --R1 $R1 --R2 $R2 --outdir ${outdir}/shovill/${strain}/ \
-  --kmers 101 --mincov 10 --minlen 500 --force\
-  --assembler spades --opts --careful --tmpdir /tmp
+[ ! -s ${outdir}/shovill/${strain}/contigs.fa ] &&\
+shovill --R1 $R1 --R2 $R2 --outdir ${outdir}/shovill/${strain}/ \
+--kmers 101 --mincov 10 --minlen 500 --force \
+--assembler spades --opts --careful --tmpdir /tmp
 
-##~~~~ prokka: annotate consensus.fa reference  ~~~~##
+
+##~~~~ pgap.py: annotate contigs.fa from Shovill output
+# move files for pgap to work
+[ ! -s pgap_run/${strain}_contigs.fa ] &&\
+cp ${outdir}/shovill/${strain}/contigs.fa pgap_run/${strain}_contigs.fa
+
+# go into pgap_run folder
+cd pgap_run
+
+# create input.yaml for pgap.py annotations
+if [[ ! -s ${strain}_input.yaml ]];then
+cat <<EOT >> ${strain}_input.yaml
+fasta:
+  class: File
+  location: ${strain}_contigs.fa
+submol:
+  class: File
+  location: meta_input.yaml
+EOT
+fi
+
+# create meta_input.yaml for pgap.py annotations
+if [[ ! -s  meta_input.yaml ]];then
+cat <<EOT >> meta_input.yaml
+topology: 'linear'
+organism:
+  genus_species: '${organism}'
+contact_info:
+    last_name: 'Coen'
+    first_name: 'van Hassel'
+    email: 'j.g.c.van.hasselt@lacdr.leidenuniv.nl'
+    organization: 'LACDR'
+    department: 'Pharmacology'
+    phone: '+31715273266'
+    street: 'Einsteinweg 55'
+    city: 'Leiden'
+    state: 'Zuid-Holland'
+    postal_code: '2333 CC'
+    country: 'The Netherlands'
+authors:
+    - author:  
+        last_name: 'Coen'    
+        first_name: 'van Hasselt'
+    - author:  
+        last_name: 'Linda'    
+        first_name: 'Aulin'
+    - author:  
+        last_name: 'Apostolos'    
+        first_name: 'Liakopoulos'
+    - author:  
+        last_name: 'Yob'    
+        first_name: 'Haakman'
+EOT
+fi
+
+
+
+if [[ ! -s  output_${strain}/annot.gff ]];then
+  echo "pgap.py commands are not ran succesfully!"
+  exit
+fi
+
+cd ..
+
+##~~~~ snpEff: build database for baseline contigs.fa references  ~~~~##
+if [ ! -f /home/linuxbrew/.linuxbrew/share/snpeff/data/${strain}_pgap/genes.gbk ];then
+  # create needed directory
+  mkdir -p /home/linuxbrew/.linuxbrew/share/snpeff/data/${strain}_pgap
+  
+  # copy genbank file and gff file for creating the database
+  cp pgap_run/output_${strain}/annot.gbk /home/linuxbrew/.linuxbrew/share/snpeff/data/${strain}_pgap
+  mv /home/linuxbrew/.linuxbrew/share/snpeff/data/${strain}_pgap/annot.gbk /home/linuxbrew/.linuxbrew/share/snpeff/data/${strain}_pgap/genes.gbk
+  
+  cp pgap_run/output_${strain}/annot.gff /home/linuxbrew/.linuxbrew/share/snpeff/data/${strain}_pgap
+  mv /home/linuxbrew/.linuxbrew/share/snpeff/data/${strain}_pgap/annot.gff /home/linuxbrew/.linuxbrew/share/snpeff/data/${strain}_pgap/regulation.gff
+  
+  # add database to config file, if it isn't in there yet
+  if ! grep -Fxq "${strain}_pgap.genome : ${strain}_pgap" /home/linuxbrew/.linuxbrew/share/snpeff/snpEff.config;then
+    echo "${strain}_pgap.genome : ${strain}_pgap" >> /home/linuxbrew/.linuxbrew/share/snpeff/snpEff.config
+  fi
+  
+  # build snpEff database
+  snpEff build -genbank -v ${strain}_pgap
+fi 
+
+exit
+
+
+
+
+
+
+
+
+
+
+############################################################
+  
+
+##~~~~ prokka: annotate contigs.fa reference  ~~~~##
   [ ! -d ${outdir}/prokka/${strain} ] &&\
   prokka --force --addgenes --prefix $strain --outdir ${outdir}/prokka/${strain} ${outdir}/shovill/${strain}/contigs.fa
 
@@ -86,7 +184,7 @@ exit
 
 
 ###################### testing multiple assembly settings
-# add to PATH for Prokka
+# add to PATH for Shovill
 PATH=${PATH}:/home/linuxbrew/.linuxbrew/bin/
 
 Reads="genome_data/raw_sequences/"
@@ -101,7 +199,7 @@ mkdir -p test_assemblies
 # kmer comparisons
 for kmer in 77 99 101 105;do
   echo $kmer
-    shovill --R1 $R1 --R2 $R2 --outdir test_assemblies/shovil_spades_kmer${kmer}/ \
+  shovill --R1 $R1 --R2 $R2 --outdir test_assemblies/shovil_spades_kmer${kmer}/ \
   --kmers ${kmer} --mincov 10 --minlen 200 --force\
   --assembler spades
 

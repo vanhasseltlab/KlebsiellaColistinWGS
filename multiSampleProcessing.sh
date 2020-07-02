@@ -149,7 +149,7 @@ if [ ! -s  ${outdir}/annotated.vcf.gz ];then
   set -o pipefail
   # annotate and manipulate with snpEff and SnpSift
   snpEff -no-downstream -no-upstream \
-  ${strain}_shovil ${outdir}/merged_filt.vcf.gz > /dev/stdout |\
+  ${strain}_pgap ${outdir}/merged_filt.vcf.gz > /dev/stdout |\
   SnpSift varType /dev/stdin > ${outdir}/annotated.vcf
 
   # move snpEff genes.txt and summary.html 

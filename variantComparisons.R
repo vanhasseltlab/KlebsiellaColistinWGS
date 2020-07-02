@@ -5,7 +5,7 @@ rm(list=ls())
 
 ##  LOAD PACKAGES & USER AGRUMENTS  ###################################################################################################################
 # packages
-pkgs <- c("vcfR", "readxl","writexl","tidyr","stringr","readr")
+pkgs <- c("vcfR", "readxl","writexl","tidyr","stringr")
 for (pkg in pkgs){
   if (!pkg %in% installed.packages()) {
     install.packages(pkg, dependencies = TRUE)
@@ -23,6 +23,8 @@ dir.create(file.path(outdir, "results"), showWarnings = FALSE)
 # path to meta files
 meta_file <- args[2]
 
+outdir <- "genome_data/toolOut/"
+meta_file <- "Sample_overview_6-23-2020.xlsx"
 
 
 ##  READ DATA  #########################################################################################################################
@@ -44,6 +46,7 @@ for (strain in unique(meta$strain)){
   
   # read vcf file with vcfR
   vcf <- read.vcfR(paste0(outdir,"/GATK_pipe_output/",strain,"/annotated.vcf.gz"))
+  #vcf <- read.vcfR(paste0("pgap_run/KPN9749_annotated.vcf.gz"))
   
   ## WITHOUT NG CLEANING ####
   sampleDF_noNG <- data.frame()
@@ -138,33 +141,51 @@ for (strain in unique(meta$strain)){
   
   # add additional annotation from gff files 
   strainDF$product <- NA
-  for (ID in unique(grep("^[A-Z]+_[0-9]+.*$",strainDF$gene_name, value=T))){
+  strainDF$inference <- NA
+  for (ID in unique(grep("^pgaptmp_[0-9]+.*$",strainDF$gene_ID, value=T))){
     
     if (grepl("-",ID)){
       IDn <- sub("[A-Z]+_","",unlist(strsplit(ID, "-")))
-      gff_line <- system(paste0("cat ",outdir,"/prokka/",strain,"/",strain,".gff | egrep '",IDn[1],"|",IDn[2],"'"),intern = T)
-      product <- paste(sub("^.*;product=", "", gff_line[grep("product",gff_line)]),collapse = " ;-; ")
+      #gff_line <- system(paste0("cat ",outdir,"/prokka/",strain,"/",strain,".gff | egrep '",IDn[1],"|",IDn[2],"'"),intern = T)
+      gff_line <- system(paste0("cat pgap_run/output_",strain,"/annot.gff | egrep '",IDn[1],"|",IDn[2],"'"),intern = T)
+      
+      #product <- paste(sub("^.*;product=", "", gff_line[grep("product",gff_line)]),collapse = " ;-; ")
+      product <- paste(gsub(".*product=(.+);p.*", "\\1", gff_line[grep("product",gff_line)]),collapse = " ;-; ")
+      inference <- paste(gsub(".*inference=(.+);l.*", "\\1", gff_line[grep("inference",gff_line)]),collapse = " ;-; ")
     }else{
       IDn <- sub("[A-Z]+_","",ID)
-      gff_line <- system(paste0("cat ",outdir,"/prokka/",strain,"/",strain,".gff | egrep ",IDn),intern = T)
-      product <- sub("^.*;product=", "", gff_line[grep("product",gff_line)])
+      #gff_line <- system(paste0("cat ",outdir,"/prokka/",strain,"/",strain,".gff | egrep ",IDn),intern = T)
+      gff_line <- system(paste0("cat pgap_run/output_",strain,"/annot.gff | egrep ",IDn),intern = T)
+      
+      
+      #product <- sub("^.*;product=", "", gff_line[grep("product",gff_line)])
+      product <- gsub(".*product=(.+);p.*", "\\1", gff_line)
+      inference <- gsub(".*inference=(.+);l.*", "\\1", gff_line)
     }
-    strainDF[which(strainDF$gene_name==ID),]$product <- product
+    strainDF[which(strainDF$gene_ID==ID),]$product <- product[2]
+    strainDF[which(strainDF$gene_ID==ID),]$inference <- inference[2]
   }
   
   strainDF_noNG$product <- NA
-  for (ID in unique(grep("^[A-Z]+_[0-9]+.*$",strainDF_noNG$gene_name, value=T))){
+  strainDF_noNG$inference <- NA
+  for (ID in unique(grep("^pgaptmp_[0-9]+.*$",strainDF_noNG$gene_ID, value=T))){
     
     if (grepl("-",ID)){
       IDn <- sub("[A-Z]+_","",unlist(strsplit(ID, "-")))
-      gff_line <- system(paste0("cat ",outdir,"/prokka/",strain,"/",strain,".gff | egrep '",IDn[1],"|",IDn[2],"'"),intern = T)
-      product <- paste(sub("^.*;product=", "", gff_line[grep("product",gff_line)]),collapse = " ;-; ")
+      #gff_line <- system(paste0("cat ",outdir,"/prokka/",strain,"/",strain,".gff | egrep '",IDn[1],"|",IDn[2],"'"),intern = T)
+      gff_line <- system(paste0("cat pgap_run/output_",strain,"/annot.gff | egrep '",IDn[1],"|",IDn[2],"'"),intern = T)
+      #product <- paste(sub("^.*;product=", "", gff_line[grep("product",gff_line)]),collapse = " ;-; ")
+      product <- paste(gsub(".*product=(.+);p.*", "\\1", gff_line[grep("product",gff_line)]),collapse = " ;-; ")
+      inference <- paste(gsub(".*inference=(.+);l.*", "\\1", gff_line[grep("inference",gff_line)]),collapse = " ;-; ")
     }else{
       IDn <- sub("[A-Z]+_","",ID)
-      gff_line <- system(paste0("cat ",outdir,"/prokka/",strain,"/",strain,".gff | egrep ",IDn),intern = T)
-      product <- sub("^.*;product=", "", gff_line[grep("product",gff_line)])
+      #gff_line <- system(paste0("cat ",outdir,"/prokka/",strain,"/",strain,".gff | egrep ",IDn),intern = T)
+      gff_line <- system(paste0("cat pgap_run/output_",strain,"/annot.gff | egrep ",IDn),intern = T)
+      product <- gsub(".*product=(.+);p.*", "\\1", gff_line)
+      inference <- gsub(".*inference=(.+);l.*", "\\1", gff_line)
     }
-    strainDF_noNG[which(strainDF_noNG$gene_name==ID),]$product <- product
+    strainDF_noNG[which(strainDF_noNG$gene_ID==ID),]$product <- product[2]
+    strainDF_noNG[which(strainDF_noNG$gene_ID==ID),]$inference <- inference[2]
   }
   
   
@@ -172,56 +193,70 @@ for (strain in unique(meta$strain)){
   #this is fixed by reading the gff file and comparing the position of the snp to the genes 
   contigs <- unique(strainDF[which(strainDF$ALT %in% "*"),]$contig)
   for (contig in contigs){
-    gff_lines <- system(paste0("cat ",outdir,"/prokka/",strain,"/",strain,".gff | egrep ",contig,' | grep -e "CDS" -e "Aragorn"'),intern = T)
-    gff_lines <- data.frame(do.call('rbind', strsplit(as.character(gff_lines),'\t',fixed=TRUE)))
-    
-    gff_lines[,c("X4","X5")] <- sapply(gff_lines[,c("X4","X5")],function(x) as.numeric(as.character(x)))
-    snp_positions <- as.numeric(as.character(strainDF[which(strainDF$ALT %in% "*"),]$POS))
-    
-    for (i in 1:length(gff_lines$X4)){
-      test <- snp_positions[ snp_positions >= gff_lines$X4[i] & snp_positions <= gff_lines$X5[i]]
-      if (length(test)!=0){
-        gff_line <- gff_lines[i,]$X9
-        strainDF[which(strainDF$POS %in% snp_positions),]$product <- sub("^.*;product=", "", gff_line)
-        strainDF[which(strainDF$POS %in% snp_positions),c("gene_name","gene_ID","feature_ID")] <- gsub(".*ID=(.+);Parent.*", "\\1", gff_line)
+    skip_to_next <- FALSE
+    tryCatch({
+      gff_lines <- system(paste0("cat pgap_run/output_",strain,"/annot.gff | egrep ",contig,' | grep -e "CDS"'),intern = T)
+      
+      gff_lines <- data.frame(do.call('rbind', strsplit(as.character(gff_lines),'\t',fixed=TRUE)))
+      
+      gff_lines[,c("X4","X5")] <- sapply(gff_lines[,c("X4","X5")],function(x) as.numeric(as.character(x)))
+      snp_positions <- as.numeric(as.character(strainDF[which(strainDF$ALT %in% "*"),]$POS))
+      
+      for (i in 1:length(gff_lines$X4)){
+        test <- snp_positions[ snp_positions >= gff_lines$X4[i] & snp_positions <= gff_lines$X5[i]]
+        if (length(test)!=0){
+          gff_line <- gff_lines[i,]$X9
+          strainDF[which(strainDF$POS %in% snp_positions),]$product <- gsub(".*product=(.+);p.*", "\\1", gff_line)
+          strainDF[which(strainDF$POS %in% snp_positions),]$inference <- gsub(".*inference=(.+);l.*", "\\1", gff_line)
+          strainDF[which(strainDF$POS %in% snp_positions),c("gene_name","gene_ID","feature_ID")] <- gsub(".*ID=(.+);Parent.*", "\\1", gff_line)
+          
+        }
       }
-    }
+    }, error = function(e) { skip_to_next <<- TRUE})
+    if(skip_to_next) { next } 
   }
   
-  contigs <- unique(strainDF_noNG[which(strainDF_noNG$ALT %in% "*"),]$contig)
-  for (contig in contigs){
-    gff_lines <- system(paste0("cat ",outdir,"/prokka/",strain,"/",strain,".gff | egrep ",contig,' | grep -e "CDS" -e "Aragorn"'),intern = T)
-    gff_lines <- data.frame(do.call('rbind', strsplit(as.character(gff_lines),'\t',fixed=TRUE)))
-    
-    gff_lines[,c("X4","X5")] <- sapply(gff_lines[,c("X4","X5")],function(x) as.numeric(as.character(x)))
-    snp_positions <- as.numeric(as.character(strainDF_noNG[which(strainDF_noNG$ALT %in% "*"),]$POS))
-    
-    for (i in 1:length(gff_lines$X4)){
-      test <- snp_positions[ snp_positions >= gff_lines$X4[i] & snp_positions <= gff_lines$X5[i]]
-      if (length(test)!=0){
-        gff_line <- gff_lines[i,]$X9
-        strainDF_noNG[which(strainDF_noNG$POS %in% snp_positions),]$product <- sub("^.*;product=", "", gff_line)
-        strainDF_noNG[which(strainDF_noNG$POS %in% snp_positions),c("gene_name","gene_ID","feature_ID")] <- gsub(".*ID=(.+);Parent.*", "\\1", gff_line)
-      }
-    }
-  }
+  # contigs <- unique(strainDF_noNG[which(strainDF_noNG$ALT %in% "*"),]$contig)
+  # for (contig in contigs){
+  #   skip_to_next <- FALSE
+  #   tryCatch({
+  #     #gff_lines <- system(paste0("cat ",outdir,"/prokka/",strain,"/",strain,".gff | egrep ",contig,' | grep -e "CDS" -e "Aragorn"'),intern = T)
+  #     gff_lines <- system(paste0("cat pgap_run/output_",strain,"/annot.gff | egrep ",contig,' | grep -e "CDS"'),intern = T)
+  #   }, error = function(e) { skip_to_next <<- TRUE})
+  #   if(skip_to_next) { next }
+  #     
+  #     gff_lines <- data.frame(do.call('rbind', strsplit(as.character(gff_lines),'\t',fixed=TRUE)))
+  # 
+  #     
+  #     gff_lines[,c("X4","X5")] <- sapply(gff_lines[,c("X4","X5")],function(x) as.numeric(as.character(x)))
+  #     snp_positions <- as.numeric(as.character(strainDF_noNG[which(strainDF_noNG$ALT %in% "*"),]$POS))
+  #     
+  #     for (i in 1:length(gff_lines$X4)){
+  #       test <- snp_positions[ snp_positions >= gff_lines$X4[i] & snp_positions <= gff_lines$X5[i]]
+  #       if (length(test)!=0){
+  #         gff_line <- gff_lines[i,]$X9
+  #         strainDF_noNG[which(strainDF_noNG$POS %in% snp_positions),]$product <- sub("^.*;product=", "", gff_line)
+  #         strainDF_noNG[which(strainDF_noNG$POS %in% snp_positions),c("gene_name","gene_ID","feature_ID")] <- gsub(".*ID=(.+);Parent.*", "\\1", gff_line)
+  #       }
+  #     }
+  # }
   
   # reorder dataframe, to a better readable order
-  col_order <- c("strain", "Time.point", "replicate","CONC", "new.lable", "contig", "contig_length", "POS", "REF", "ALT", "annotation", "putative_impact", "gene_name",
-                 "product","gene_ID", "feature_type", "feature_ID", "Transcript_biotype", "total", "HGVS.c", "HGVS.p", "cDNA_position", "CDS_position", "Protein_position")
+  col_order <- c("strain", "Time.point", "replicate","CONC", "new.lable", "contig", "contig_length", "POS", "REF", "ALT",  "gene_name","product",
+                 "inference", "HGVS.c", "HGVS.p", "cDNA_position", "CDS_position", "Protein_position", "annotation", "putative_impact","gene_ID", "feature_type", "feature_ID","Transcript_biotype", "total")
   strainDF <- strainDF[, col_order]
   strainDF_noNG <- strainDF_noNG[, col_order]
   
   # make gene_names of ORFs prettier
-  for (ID in unique(grep("^[A-Z]+_[0-9]+.*$",strainDF$gene_ID, value=T))){
-    if (grepl("-",ID)){
-      IDn <- sub("[A-Z]+_","",unlist(strsplit(ID, "-")))
+  for (ID in unique(grep("^.*pgaptmp_[0-9]+.*$",strainDF$gene_ID, value=T))){
+    if (grepl("[0-9]-",ID)){
+      IDn <- sub("[cds\\-]*pgaptmp_","",unlist(strsplit(ID, "-")))
       new_name <- paste0("ORF_",IDn[1],"-ORF_",IDn[2])
       try(strainDF[which(strainDF$gene_name==ID),]$gene_name <- new_name,silent=T)
       try(strainDF[which(strainDF$gene_ID==ID),]$gene_ID <- new_name,silent=T)
       try(strainDF[which(strainDF$feature_ID==ID),]$feature_ID <- new_name,silent=T)
     }else{
-      IDn <- sub("[A-Z]+_","",ID)
+      IDn <- sub("[cds\\-]*pgaptmp_","",ID)
       new_name <- paste0("ORF_",IDn)
       try(strainDF[which(strainDF$gene_name==ID),]$gene_name <- new_name,silent=T)
       try(strainDF[which(strainDF$gene_ID==ID),]$gene_ID <- new_name,silent=T)
@@ -230,15 +265,15 @@ for (strain in unique(meta$strain)){
   }
   
   # make gene_names of ORFs prettier
-  for (ID in unique(grep("^[A-Z]+_[0-9]+.*$",strainDF_noNG$gene_ID, value=T))){
-    if (grepl("-",ID)){
-      IDn <- sub("[A-Z]+_","",unlist(strsplit(ID, "-")))
+  for (ID in unique(grep("^pgaptmp_[0-9]+.*$",strainDF_noNG$gene_ID, value=T))){
+    if (grepl("[0-9]-",ID)){
+      IDn <- sub("[cds\\-]*pgaptmp_","",unlist(strsplit(ID, "-")))
       new_name <- paste0("ORF_",IDn[1],"-ORF_",IDn[2])
       try(strainDF_noNG[which(strainDF_noNG$gene_name==ID),]$gene_name <- new_name,silent=T)
       try(strainDF_noNG[which(strainDF_noNG$gene_ID==ID),]$gene_ID <- new_name,silent=T)
       try(strainDF_noNG[which(strainDF_noNG$feature_ID==ID),]$feature_ID <- new_name,silent=T)
     }else{
-      IDn <- sub("[A-Z]+_","",ID)
+      IDn <- sub("[cds\\-]*pgaptmp_","",ID)
       new_name <- paste0("ORF_",IDn)
       try(strainDF_noNG[which(strainDF_noNG$gene_name==ID),]$gene_name <- new_name,silent=T)
       try(strainDF_noNG[which(strainDF_noNG$gene_ID==ID),]$gene_ID <- new_name,silent=T)
@@ -283,6 +318,8 @@ for (strain in unique(meta$strain)){
 # write output xlsx files
 write_xlsx(strainL, paste0(outdir,"/results/",Sys.Date(),"_NG-filteration_snpList.xlsx"))
 write_xlsx(strainL_noNG, paste0(outdir,"/results/",Sys.Date(),"_snpList.xlsx"))
+
+#write_xlsx(strainL, paste0("pgap_run/",Sys.Date(),"_KPN9749_snpList.xlsx"))
 
 
 quit()

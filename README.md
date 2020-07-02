@@ -4,10 +4,10 @@ A bash pipeline for creating a *de novo* assembly of Wild-type which is compared
 
 ## Installations 
 
-Download NGSdownstreamPipeline.tar.gz and unpack.
+Download NGSdownstreamPipeline.tar and unpack.
 
 ```bash
-tar zxvf NGSdownstreamPipeline.tar.gz
+tar xvf NGSdownstreamPipeline.tar
 ```
 
 # Install dependencies
@@ -15,7 +15,6 @@ tar zxvf NGSdownstreamPipeline.tar.gz
 Use [Linuxbrew](https://docs.brew.sh/Homebrew-on-Linux) for installing most dependencies
 
 ```bash
-brew install brewsci/bio/prokka
 brew install brewsci/bio/shovill
 shovill --check
 

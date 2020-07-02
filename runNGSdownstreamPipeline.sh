@@ -5,19 +5,19 @@
 usage(){
 clear
 echo "
-runNGSdownstramPipeline version 0.0.1 (build 2020-02-17), by Yob Haakman <yob1997@live.nl>.
+runNGSdownstramPipeline version 0.0.2 (build 2020-06-22), by Yob Haakman <yob1997@live.nl>.
 This script does variation calling on filtered Next Generation Sequencing files (fastq.gz format)
 Creates a draft genome from the inoculum sample reads, annotates the draft genome and create databases for it.
 Maps evolved isogenic mutant sample reads to the draft genome.
 Does variation calling based on the draft genome.
 Output can be used in downstream analysis with R.
 
-Usage:  bash runNGSdownstreamPipeline.sh -r [PATH_TO_R1_AND_R2_READS]
+Usage:  bash runNGSdownstreamPipeline.sh -r [PATH_TO_R1_AND_R2_READS] -m [PATH_TO_META.xslx]
 
 Required parameters:
-  -r , -reads <path>      :Path to reads.
+  -r , -reads <Path>      :Path to reads.
                           Input must be a folder containing forward (R1) and reverse (R2) reads for each sample in compressed fastq format (fastq.gz).
-  -m , -meta <path>       :Path to meta xlsx file. (default: Sample_overview_seq.xlsx)
+  -m , -meta <PathToFile> :Path to meta xlsx file. (default: Sample_overview_seq.xlsx)
                           (Tab-delimited xlsx file with columns in the following order.
                           1:'strain'          [STRING]
                           2:'experiment'      [STRING]
@@ -33,9 +33,9 @@ Required parameters:
                           12:'row'	          [A-Z]
                           13:'col'            [0-9]
                           column 10 has to be unique for every sample.)
-
 Optional parameters:
--o , -output <path>      :This will set the output folder to which all files are writen to. (default: NGS_pipe_output)
+  -o , -output <Path>     :This will set the output folder to which all files are writen to. (default: 'NGS_pipe_output')
+  -w , -organism <String> :Organism name, this identifier must be valid in NCBI Taxonomy. (default: 'Klebsiella pneumoniae')
 "
 }
 
@@ -75,9 +75,11 @@ fi
 # add to linuxbrew bin/ to PATH
 PATH=${PATH}:/home/linuxbrew/.linuxbrew/bin/
 
-for tool in "shovill" "prokka" "snpEff" "SnpSift" "vt" "tabix" "bgzip" "bwa mem" "xlsx2csv";do
-  command -v $tool >/dev/null 2>1 || { echo >&2 "I require $tool but it's not installed.  Aborting."; exit 1; }
+# check if needed system and linuxbrew programs are installed
+for tool in "shovill" "snpEff" "SnpSift" "vt" "tabix" "bgzip" "bwa mem" "xlsx2csv" "docker";do
+  command -v $tool > /dev/null || { echo >&2 "I require $tool but it's not installed.  Aborting."; exit; }
 done
+
 
 # check if GATK is installed in /tools
 if [ ! -s tools/gatk-4.1.3.0/gatk-package-4.1.3.0-local.jar ];then
@@ -93,6 +95,24 @@ fi
 if [ ! -s tools/gatk-4.1.3.0/gatk-package-4.1.3.0-local.jar ];then
   echo "tools/gatk-4.1.3.0/gatk-package-4.1.3.0-local.jar not found.  Aborting."; exit 1;
 fi
+
+
+# give docker the needed rights to be executed by pgap.py
+sudo chmod 666 /var/run/docker.sock
+
+# check if pgap is installed in /pgap_run
+mkdir -p pgap_run
+if [[ ! -s pgap_run/pgap.py ]];then
+  echo "pgap.py is not installed, downloading and installing now. This take a while!"
+  cd  pgap_run
+  curl -OL https://github.com/ncbi/pgap/raw/prod/scripts/pgap.py
+  chmod +x pgap.py
+  ./pgap.py --update
+  cd ..
+fi
+
+
+
 #===========================================================================================================#
 
 
@@ -116,7 +136,12 @@ while test $# -gt 0; do # loop over input arguments
     shift
     meta=$1
     shift
-    ;; 
+    ;;
+  -w|-organism)
+    shift
+    organism=${1:-"Klebsiella pneumoniae"}
+    shift
+    ;;
   *)
     echo "$1 is not a recognized option!"
   exit 1;
@@ -162,9 +187,9 @@ done
 echo "
 Starting analysis NGS!
 
-Output directory : ${outdir}
-Path to reads : ${reads}
-Path to meta file: ${meta}
+Output directory  : ${outdir}
+Path to reads     : ${reads}
+Path to meta file : ${meta}
 "
 
 #===========================================================================================================#
@@ -175,27 +200,45 @@ Path to meta file: ${meta}
 #                           Create draft genomes of inoculum
 
 for baseline in "${!strains[@]}";do
-  (
-  if [ ! -f ${outdir}/shovill/${strains[$baseline]}/contigs.fa ];then
+(
+  if [ ! -f ${outdir}/shovill/${strains[$baseline]}/contigs.fa ] || [ ! -f ${outdir}/shovill/${strains[$baseline]}/annotation/annot.gbk ];then
     R1=$(ls ${reads}*R1* | egrep ${baseline})
     R2=$(echo ${R1} | sed 's/R1.filt.fastq.gz$/R2.filt.fastq.gz/g')
-    bash deNovoAssembler.sh ${strains[$baseline]} $R1 $R2 $outdir
+    bash deNovoAssembler.sh ${strains[$baseline]} $R1 $R2 $outdir $organism
     echo ""
   fi
-  )&
+
+  if [ ! -f ${outdir}/shovill/${strains[$baseline]}/contigs.fa ];then
+    echo "
+    something went wrong in deNovoAssembler.sh
+    draft genome of inoculum(s) isn't/aren't created..   aborting.
+    "
+    exit
+  fi
+)&
 done
 wait
 
-if [ ! -f ${outdir}/shovill/${strains[$baseline]}/contigs.fa ];then
-  echo "
-something went wrong in deNovoAssembler.sh
-draft genome of inoculum isn't created..   aborting.
-  "
+proceed="yes"
+for baseline in "${!strains[@]}";do
+  if [[ ! -s  pgap_run/output_${strains[$baseline]}/annot.gff ]];then
+    echo "Run the following commands, to annotate the draft genome assembly of ${strains[$baseline]}.
+  
+    cd /pgap_run
+    ./pgap.py -r -c 16 -m 16g -o output_${strains[$baseline]} ${strains[$baseline]}_input.yaml
+    cd ..
+    "
+    proceed="no"
+  fi
+done
+
+if [ ${proceed} == "no" ];then
+  echo "Exiting now."
   exit
 fi
 
 #clear
-echo "Baseline references created!"
+echo "Draft genome references created!"
 echo "Next steps can take a long time to run."
 
 while true;do
